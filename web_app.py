@@ -72,56 +72,81 @@ if uploaded_files:
         
         st.subheader("2. 自动汇总结果")
         st.dataframe(summary)
-        
-        # 提供下载
-        csv = summary.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 点击下载汇总结果", csv, "汇总结果.csv", "text/csv")
-    else:
-        st.error(f"⚠️ 智能识别失败！当前表格的列名是：{list(df.columns)}。请确保表格里含有'分类/类别/科目'和'金额/发生额'等字眼。")
+                # === 辅助功能A：按时间维度汇总 ===
+        # 尝试识别日期列
+        possible_date_cols = ['日期', '时间', '发生日期', '记账日期', '业务日期']
+        date_col = None
+        for col in df.columns:
+            if any(k in str(col) for k in possible_date_cols):
+                date_col = col
+                break
 
-# ================= 接入 AI 财务分析 =================
-st.subheader("3. AI 财务分析报告")
+        if date_col:
+            # 将这一列转为日期格式
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+            # 丢掉日期无效的行
+            df_date = df.dropna(subset=[date_col])
+            
+            if not df_date.empty:
+                # 提取月份，格式如 2026-09
+                df_date['月份'] = df_date[date_col].dt.to_period('M').astype(str)
+                # 按月汇总金额
+                month_summary = df_date.groupby('月份')['金额'].sum().reset_index()
+                
+                st.subheader("2.5 按月汇总趋势")
+                st.dataframe(month_summary)
+                
+                # 用折线图直观展示
+                st.line_chart(month_summary.set_index('月份')['金额'])  
+            # 提供下载
+            csv = summary.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 点击下载汇总结果", csv, "汇总结果.csv", "text/csv")
+        else:
+            st.error(f"⚠️ 智能识别失败！当前表格的列名是：{list(df.columns)}。请确保表格里含有'分类/类别/科目'和'金额/发生额'等字眼。")
 
-# ⚠️ 注意：API Key 必须输入到网页的输入框中，绝对不能写在代码里！
-api_key = st.text_input("请输入你的智谱 AI API Key（用于生成分析报告）", type="password")
+            # ================= 接入 AI 财务分析 =================
+            st.subheader("3. AI 财务分析报告")
 
-if st.button("🤖 生成 AI 财务分析报告"):
-    if not api_key:
-        st.warning("请先输入 API Key！")
-    else:
-        data_text = summary.to_string(index=False)
-        
-        url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        prompt = f"""
-        你是一个专业的财务分析师。请根据以下费用汇总数据，写一份简短的财务分析报告。
-        要求：
-        1. 概括总费用情况。
-        2. 指出占比最高的费用类别，并提示可能存在的合规或管控风险。
-        3. 给出1-2条合理化建议。
-        数据如下：
-        {data_text}
-        """
-        
-        payload = {
-            "model": "glm-4-flash",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.3
-        }
-        
-        with st.spinner("AI 正在分析数据中，请稍候..."):
-            try:
-                response = requests.post(url, headers=headers, json=payload)
-                if response.status_code == 200:
-                    result = response.json()
-                    ai_reply = result['choices'][0]['message']['content']
-                    st.success("分析完成！")
-                    st.write(ai_reply)
+            # ⚠️ 注意：API Key 必须输入到网页的输入框中，绝对不能写在代码里！
+            api_key = st.text_input("请输入你的智谱 AI API Key（用于生成分析报告）", type="password")
+
+            if st.button("🤖 生成 AI 财务分析报告"):
+                if not api_key:
+                    st.warning("请先输入 API Key！")
                 else:
-                    st.error(f"AI 调用失败，错误码：{response.status_code}，请检查 API Key 是否正确。")
-            except Exception as e:
-                st.error(f"网络请求出错：{e}")
+                    data_text = summary.to_string(index=False)
+                    
+                    url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    prompt = f"""
+                    你是一个专业的财务分析师。请根据以下费用汇总数据，写一份简短的财务分析报告。
+                    要求：
+                    1. 概括总费用情况。
+                    2. 指出占比最高的费用类别，并提示可能存在的合规或管控风险。
+                    3. 给出1-2条合理化建议。
+                    数据如下：
+                    {data_text}
+                    """
+                    
+                    payload = {
+                        "model": "glm-4-flash",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.3
+                    }
+                    
+                    with st.spinner("AI 正在分析数据中，请稍候..."):
+                        try:
+                            response = requests.post(url, headers=headers, json=payload)
+                            if response.status_code == 200:
+                                result = response.json()
+                                ai_reply = result['choices'][0]['message']['content']
+                                st.success("分析完成！")
+                                st.write(ai_reply)
+                            else:
+                                st.error(f"AI 调用失败，错误码：{response.status_code}，请检查 API Key 是否正确。")
+                        except Exception as e:
+                            st.error(f"网络请求出错：{e}")
