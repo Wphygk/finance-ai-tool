@@ -100,9 +100,6 @@ if uploaded_files:
                 st.line_chart(month_summary.set_index('月份')['金额'])  
             # 提供下载
             csv = summary.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 点击下载汇总结果", csv, "汇总结果.csv", "text/csv")
-        else:
-            st.error(f"⚠️ 智能识别失败！当前表格的列名是：{list(df.columns)}。请确保表格里含有'分类/类别/科目'和'金额/发生额'等字眼。")
 
             # ================= 接入 AI 财务分析 =================
             st.subheader("3. AI 财务分析报告")
@@ -150,3 +147,6 @@ if uploaded_files:
                                 st.error(f"AI 调用失败，错误码：{response.status_code}，请检查 API Key 是否正确。")
                         except Exception as e:
                             st.error(f"网络请求出错：{e}")
+        else:
+            st.error(f"⚠️ 智能识别失败！当前表格的列名是：{list(df.columns)}。请确保表格里含有'分类/类别/科目'和'金额/发生额'等字眼。")
+
